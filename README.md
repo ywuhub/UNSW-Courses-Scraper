@@ -4,7 +4,7 @@
 
 ## The program is split into different functions such that each function produces a CSV files and each subsequent function adds onto the CSV files such as adding course details and grouping courses.
 
-## The CSV files generated will be cleansed will be merged together into one CSV files that contains all the course information.
+## The CSV files generated will be cleansed will be merged together into one CSV files that contains all the course information and put into the CSV file 'clean_course_offerings.csv'.
 
 ## Column Variables: 'Course', 'Offering Terms', 'Campus', 'Undergraduate Course', 'Postgraduate Course', 'Course Description', 'Prerequisites' and 'Units of Credit'
 
