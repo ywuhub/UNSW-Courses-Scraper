@@ -6,6 +6,7 @@
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
 from urllib.error import HTTPError
+import numpy as np
 import pandas as pd
 import random
 import re
@@ -127,119 +128,182 @@ def group_data():
 def additional_data():
     # use the sorted course offerings file and add on additional information of columns
     df = pd.read_csv('sorted_course_offerings.csv', index_col = 0)        
-    courses = df.index.tolist()
     
-    # fetch the year for the handbook
-    handbook_url = 'https://www.handbook.unsw.edu.au'
-    content = urlopen(handbook_url).read()
-    soup = BeautifulSoup(content, "html.parser")
-    year = soup.find_all('h1', class_='t-header__heading h3')[0].text
-    year = re.search('Handbook ([\d]{4})', year).group(1)
+    # split dataframe into smaller dataframes in order to output smaller CSV files (chunks of the main CSV files)
+    dfs = np.array_split(df, 9)
+    part = 1
+    for df in dfs:
+        courses = df.index.tolist()
     
-    # debugging purposes only
-    n_items = len(courses)
-    
-    # search for each course and retreive the additional information (i.e course description)
-    undergrad_offered = dict.fromkeys(courses, 0) # True(1)/False(0) if the course is offered in undergraduate
-    postgrad_offered = dict.fromkeys(courses, 0) # True(1)/False(0) if the course is offered in postgraduate
-    prereqs = {}
-    course_descr = {}
-    uocs = {}
-    for course in courses:
-        # check if these links exists in the url above and that decides if what career they are offered under
-        # career choices: undergraduate course or postgraduate course or course offered in both careers
-        undergrad_url = 'http://www.handbook.unsw.edu.au/undergraduate/courses/'+ year + '/' + course + '.html'
-        postgrad_url = 'http://www.handbook.unsw.edu.au/postgraduate/courses/'+ year + '/' + course + '.html'
+        # fetch the year for the handbook
+        handbook_url = 'https://www.handbook.unsw.edu.au'
+        content = urlopen(handbook_url).read()
+        soup = BeautifulSoup(content, "html.parser")
+        year = soup.find_all('h1', class_='t-header__heading h3')[0].text
+        year = re.search('Handbook ([\d]{4})', year).group(1)
         
-        # course url
-        url = 'http://timetable.unsw.edu.au/' + year + '/' + course + '.html'
-                
         # debugging purposes only
-        n_items += -1
-        print ('Current course being processed: ' + course + ' Courses left to process:', n_items)
+        n_items = len(courses)
         
-        # try to open the url to check for validity
-        try:
-            content = urlopen(url).read()
-        except HTTPError as error:
-            undergrad_offered[course] = 0
-            postgrad_offered[course] = 0
-            prereqs[course] = "N\A"
-            course_descr[course] = "N\A"
-            uocs[course] = "N\A"
-            continue
+        # search for each course and retreive the additional information (i.e course description)
+        undergrad_offered = dict.fromkeys(courses, 0) # True(1)/False(0) if the course is offered in undergraduate
+        postgrad_offered = dict.fromkeys(courses, 0) # True(1)/False(0) if the course is offered in postgraduate
+        prereqs = {}
+        course_descr = {}
+        uocs = {}
+        for course in courses:
+            # check if these links exists in the url above and that decides if what career they are offered under
+            # career choices: undergraduate course or postgraduate course or course offered in both careers
+            undergrad_url = 'http://www.handbook.unsw.edu.au/undergraduate/courses/'+ year + '/' + course + '.html'
+            postgrad_url = 'http://www.handbook.unsw.edu.au/postgraduate/courses/'+ year + '/' + course + '.html'
+            
+            # course url
+            url = 'http://timetable.unsw.edu.au/' + year + '/' + course + '.html'
+                    
+            # debugging purposes only
+            n_items += -1
+            print ('Current course being processed: ' + course + ' Courses left to process:', n_items)
+            
+            # try to open the url to check for validity
+            try:
+                content = urlopen(url).read()
+            except HTTPError as error:
+                undergrad_offered[course] = 0
+                postgrad_offered[course] = 0
+                prereqs[course] = "N\A"
+                course_descr[course] = "N\A"
+                uocs[course] = "N\A"
+                continue
+                    
+            soup = BeautifulSoup(content, "html.parser")
+            
+            # check if course is offered under the undergraduate and/or postgraduate career
+            href_tags = soup.find_all('a', href = True)
+            for tag in href_tags:
+                if (tag['href'] == undergrad_url):
+                    undergrad_offered[course] = 1
+                elif (tag['href'] == postgrad_url):
+                    postgrad_offered[course] = 1
+                    
+            # fetch other details (i.e. course description)
+            if (undergrad_offered[course] == 1):
+                try:
+                    content = urlopen(undergrad_url).read()
+                except HTTPError as error:
+                    prereqs[course] = "N\A"
+                    course_descr[course] = "N\A"
+                    uocs[course] = "N\A"
+                    continue
+            elif (postgrad_offered[course] == 1):
+                try:
+                    content = urlopen(postgrad_url).read()
+                except HTTPError as error:
+                    prereqs[course] = "N\A"
+                    course_descr[course] = "N\A"
+                    uocs[course] = "N\A"
+                    continue
+            else:
+                prereqs[course] = "N\A"
+                course_descr[course] = "N\A"
+                uocs[course] = "N\A"
+                continue
                 
-        soup = BeautifulSoup(content, "html.parser")
-        
-        # check if course is offered under the undergraduate and/or postgraduate career
-        href_tags = soup.find_all('a', href = True)
-        for tag in href_tags:
-            if (tag['href'] == undergrad_url):
-                undergrad_offered[course] = 1
-            elif (tag['href'] == postgrad_url):
-                postgrad_offered[course] = 1
+            soup = BeautifulSoup(content, "html.parser")
+            prereq_descr = list(soup.find_all('div', class_ = 'a-card-text m-toggle-text has-focus'))
+            course_uoc = list(soup.find_all('h4', class_ = 'no-margin units'))
+            
+            if (len(course_uoc) > 0):
+                uoc = str(course_uoc[0].text).strip()
+                uocs[course] = uoc
+            else:
+                prereqs[course] = "N\A"
+                course_descr[course] = "N\A"
+                uocs[course] = "N\A"
+                continue
                 
-        # fetch other details (i.e. course description)
-        if (undergrad_offered[course] == 1):
-            content = urlopen(undergrad_url).read()
-        elif (postgrad_offered[course] == 1):
-            content = urlopen(postgrad_url).read()
-
-        soup = BeautifulSoup(content, "html.parser")
-        prereq_descr = list(soup.find_all('div', class_ = 'a-card-text m-toggle-text has-focus'))
-        course_uoc = list(soup.find_all('h4', class_ = 'no-margin units'))
+            # check if they have pre requisites 
+            if (len(prereq_descr) == 2):
+                description = str(prereq_descr[0].text).strip()
+                prereq = str(prereq_descr[1].text).strip()
+                
+                course_descr[course] = description
+                prereqs[course] = prereq
+            elif (len(prereq_descr) == 1):
+                description = str(prereq_descr[0].text).strip()
+                
+                course_descr[course] = description
+                prereqs[course] = 'No Prerequisites'
+     
+            # take 10-20 seconds break before next link to reduce load on server
+            timer = random.randint(10,20)
+            time.sleep(timer)
         
-        if (len(course_uoc) > 0):
-            uoc = str(course_uoc[0].text).strip()
-            uocs[course] = uoc
-        else:
-            prereqs[course] = "N\A"
-            course_descr[course] = "N\A"
-            uocs[course] = "N\A"
-            continue
-            
-        # check if they have pre requisites 
-        if (len(prereq_descr) == 2):
-            description = str(prereq_descr[0].text).strip()
-            prereq = str(prereq_descr[1].text).strip()
-            
-            course_descr[course] = description
-            prereqs[course] = prereq
-        elif (len(prereq_descr) == 1):
-            description = str(prereq_descr[0].text).strip()
-            
-            course_descr[course] = description
-            prereqs[course] = 'No Prerequisites'
- 
-        # take 8-13 seconds break before next link to reduce load on server
-        timer = random.randint(8,13)
-        time.sleep(timer)
-    
-    # create dataframes using the dictionaries create above
-    undergrad_df = pd.DataFrame.from_dict(undergrad_offered, orient = 'index', columns = ['undergraduate_offered'])
-    postgrad_df = pd.DataFrame.from_dict(postgrad_offered, orient = 'index', columns = ['postgraduate_offered'])  
-    descr_df = pd.DataFrame.from_dict(course_descr, orient = 'index', columns = ['course_description'])
-    prereqs_df = pd.DataFrame.from_dict(prereqs, orient = 'index', columns = ['pre_requisites'])
-    uocs_df = pd.DataFrame.from_dict(uocs, orient = 'index', columns = ['course_uoc'])
-    
-    # join the dataframes with the main sorted_course_offerings csv with the new data
-    temp_df = undergrad_df.join(postgrad_df).join(descr_df).join(prereqs_df).join(uocs_df)
-    combined_df = df.merge(temp_df, how = 'inner', left_index = True, right_index = True)
-    
-    # output as detailed_course_offerings.csv
-    combined_df.to_csv('detailed_course_offerings.csv', index = True)
+        # create dataframes using the dictionaries create above
+        undergrad_df = pd.DataFrame.from_dict(undergrad_offered, orient = 'index', columns = ['undergraduate_offered'])
+        postgrad_df = pd.DataFrame.from_dict(postgrad_offered, orient = 'index', columns = ['postgraduate_offered'])  
+        descr_df = pd.DataFrame.from_dict(course_descr, orient = 'index', columns = ['course_description'])
+        prereqs_df = pd.DataFrame.from_dict(prereqs, orient = 'index', columns = ['pre_requisites'])
+        uocs_df = pd.DataFrame.from_dict(uocs, orient = 'index', columns = ['course_uoc'])
+        
+        # join the dataframes with the main sorted_course_offerings csv with the new data
+        temp_df = undergrad_df.join(postgrad_df).join(descr_df).join(prereqs_df).join(uocs_df)
+        combined_df = df.merge(temp_df, how = 'inner', left_index = True, right_index = True)
+        
+        # output as detailed_course_offerings_part.csv
+        output_file = 'detailed_course_offerings_' + str(part) + '.csv'
+        combined_df.to_csv(output_file, index = True)
+        part += 1
 
+def join_data():
+    # retrieve the 9 csv files and store into pandas dataframe
+    dfs = []
+    for part in range(1,10):
+        file = 'detailed_course_offerings_' + str(part) + '.csv'
+        df = pd.read_csv(file, index_col = 0)
+        dfs.append(df)
+        
+    # concatonate all 9 csv files with partial courses into a complate file with all courses
+    df = pd.concat(dfs)
+    
+    # output as total_course_offerings_part.csv
+    output_file = 'total_course_offerings.csv'
+    df.to_csv(output_file, index = True)
+        
+def cleanse_data():
+    # fetch the complete course offerings csv file
+    df = pd.read_csv('total_course_offerings.csv', index_col = 0)
+    
+    # clean up the cell values
+    df.loc[df.course_description == 'N\A', 'course_description'] = "Description not available"
+    df.loc[df.pre_requisites == 'N\A', 'pre_requisites'] = "Prerequisites not available"
+    df.loc[df.course_uoc == 'N\A', 'course_uoc'] = "Units of credit not available"
+
+    df.loc[df.undergraduate_offered == 1, 'undergraduate_offered'] = "Yes"
+    df.loc[df.undergraduate_offered == 0, 'undergraduate_offered'] = "No"
+    
+    df.loc[df.postgraduate_offered == 1, 'postgraduate_offered'] = "Yes"
+    df.loc[df.postgraduate_offered == 0, 'postgraduate_offered'] = "No"
+    
+    # clean up column names
+    df.columns = ['Offering Terms', 'Campus', 'Undergraduate Course', 'Postgraduate Course', 'Course Description', 'Prerequisites', 'Units of Credit']
+    
+    # output as clean_total_course_offerings_part.csv
+    output_file = 'clean_total_course_offerings.csv'
+    df.to_csv(output_file, index = True)
+    
 if __name__ == "__main__":
-    # SECTION 1: Get information on each individual course and any aditional information if needed
+    # get information on each individual course and any aditional information if needed
     # retrieve all UNSW courses with minimal information (i.e. Course Name, Term offered in and Campus its held at)
-    #scrape_courses()
+    scrape_courses()
     
     # group up the data (i.e. group up same course names and order by term offerings)
-    #group_data()
+    group_data()
     
     # add additional information to each courses (i.e. units of credit, description of course, prerequisites...)
     additional_data()
     
-    # SECTION 2: Seperate database of the class times with the class name as the primary key
-    # add the class times (if available) and the type of class (i.e. lecture, tutorial or lab) to each course
+    # join csv files into one file which will store all the UNSW courses
+    join_data()
     
+    # cleanse the complete dataset
+    cleanse_data()
