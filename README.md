@@ -1,4 +1,7 @@
-# [PYTHON] UNSW Courses Scraper
+# UNSW Courses Scraper
+
+## UPDATE (2022)
+The HTML structure of the current UNSW Handbook is no longer valid to parse into this UNSW Courses Scraper application as there has being significant changes to the Handbook Layout since this was last ran and developed.
 
 ## Objective
 A web scraper that scrapes all UNSW undergraduate and postgraduate courses that are available in all campuses and displays them in a csv file with the most important variables.
